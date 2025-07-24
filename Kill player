@@ -1,0 +1,4 @@
+local p = game.Players.LocalPlayer
+p.Character:BreakJoints()
+task.wait(1)
+p:Kick("bạn đã bị kill")
