@@ -9,7 +9,7 @@ local character = game.Players.LocalPlayer.Character or game.Players.LocalPlayer
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
 -- Dịch chuyển CFrame theo trục X cộng thêm 
-humanoidRootPart.CFrame = humanoidRootPart.CFrame + Vector3.new(99999999999999999, 0, 0)
+humanoidRootPart.CFrame = humanoidRootPart.CFrame + Vector3.new(1000, 0, 0)
 
 wait(1)
 
