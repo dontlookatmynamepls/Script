@@ -1,4 +1,4 @@
 local p = game.Players.LocalPlayer
 p.Character:BreakJoints()
 task.wait(3)
-p:Kick("bạn đã bị kill bởi script hồ huỳnh hoàng huy")
+p:Kick("bạn đã bị kill bởi script hồ huỳnh hoàng huy đang sài trong 99 in the forest")
