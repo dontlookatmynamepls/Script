@@ -1,22 +1,11 @@
--- Load UI Library
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard"))()
-
--- Window
-local Window = Library:NewWindow("Flandre Hub")
-
--- Section
-local Section = Window:NewSection("Black Hole Script")
-
--- === Config
-getgenv().BlackHoleEnabled = false
-
--- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
 
--- BlackHole Part Setup
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
 local Folder = Instance.new("Folder", Workspace)
 local Part = Instance.new("Part", Folder)
 local Attachment1 = Instance.new("Attachment", Part)
@@ -24,36 +13,58 @@ Part.Anchored = true
 Part.CanCollide = false
 Part.Transparency = 1
 
--- State
-local blackHoleActive = false
-local followConnection
-local addedConnection
+if not getgenv().Network then
+    getgenv().Network = {
+        BaseParts = {},
+        Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424)
+    }
 
--- === Force Part Except LocalPlayer
+    Network.RetainPart = function(Part)
+        if typeof(Part) == "Instance" and Part:IsA("BasePart") and Part:IsDescendantOf(Workspace) then
+            table.insert(Network.BaseParts, Part)
+            Part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+            Part.CanCollide = false
+        end
+    end
+
+    local function EnablePartControl()
+        LocalPlayer.ReplicationFocus = Workspace
+        RunService.Heartbeat:Connect(function()
+            sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
+            for _, Part in pairs(Network.BaseParts) do
+                if Part:IsDescendantOf(Workspace) then
+                    Part.Velocity = Network.Velocity
+                end
+            end
+        end)
+    end
+
+    EnablePartControl()
+end
+
 local function ForcePart(v)
-    local char = LocalPlayer.Character
-    if char and v:IsDescendantOf(char) then return end
-
-    if v:IsA("Part") and not v.Anchored 
-    and not v.Parent:FindFirstChild("Humanoid") 
-    and not v.Parent:FindFirstChild("Head") 
-    and v.Name ~= "Handle" then
-        
-        for _, x in ipairs(v:GetChildren()) do
-            if x:IsA("BodyAngularVelocity") or x:IsA("BodyForce") or x:IsA("BodyGyro")
-            or x:IsA("BodyPosition") or x:IsA("BodyThrust") or x:IsA("BodyVelocity")
-            or x:IsA("RocketPropulsion") then
+    if v:IsA("Part") and not v.Anchored and not v.Parent:FindFirstChild("Humanoid") and not v.Parent:FindFirstChild("Head") and v.Name ~= "Handle" then
+        for _, x in next, v:GetChildren() do
+            if x:IsA("BodyAngularVelocity") or x:IsA("BodyForce") or x:IsA("BodyGyro") or x:IsA("BodyPosition") or x:IsA("BodyThrust") or x:IsA("BodyVelocity") or x:IsA("RocketPropulsion") then
                 x:Destroy()
             end
         end
-
+        if v:FindFirstChild("Attachment") then
+            v:FindFirstChild("Attachment"):Destroy()
+        end
+        if v:FindFirstChild("AlignPosition") then
+            v:FindFirstChild("AlignPosition"):Destroy()
+        end
+        if v:FindFirstChild("Torque") then
+            v:FindFirstChild("Torque"):Destroy()
+        end
         v.CanCollide = false
         local Torque = Instance.new("Torque", v)
         Torque.Torque = Vector3.new(100000, 100000, 100000)
         local AlignPosition = Instance.new("AlignPosition", v)
         local Attachment2 = Instance.new("Attachment", v)
         Torque.Attachment0 = Attachment2
-        AlignPosition.MaxForce = 9e15
+        AlignPosition.MaxForce = 9999999999999999
         AlignPosition.MaxVelocity = math.huge
         AlignPosition.Responsiveness = 200
         AlignPosition.Attachment0 = Attachment2
@@ -61,59 +72,89 @@ local function ForcePart(v)
     end
 end
 
--- === Toggle Black Hole ===
-local function toggleBlackHole(humanoidRootPart, state)
-    blackHoleActive = state
-    getgenv().BlackHoleEnabled = state
+local blackHoleActive = true
 
+local function toggleBlackHole()
+    blackHoleActive = not blackHoleActive
     if blackHoleActive then
-        -- Force tất cả part hiện có
-        for _, v in ipairs(Workspace:GetDescendants()) do
+        for _, v in next, Workspace:GetDescendants() do
             ForcePart(v)
         end
 
-        -- Force part mới spawn
-        if addedConnection then addedConnection:Disconnect() end
-        addedConnection = Workspace.DescendantAdded:Connect(function(v)
+        Workspace.DescendantAdded:Connect(function(v)
             if blackHoleActive then
                 ForcePart(v)
             end
         end)
 
-        -- Follow nhân vật
-        if followConnection then followConnection:Disconnect() end
-        followConnection = RunService.RenderStepped:Connect(function()
-            if humanoidRootPart and humanoidRootPart.Parent then
+        spawn(function()
+            while blackHoleActive and RunService.RenderStepped:Wait() do
                 Attachment1.WorldCFrame = humanoidRootPart.CFrame
             end
         end)
-    else
-        if followConnection then followConnection:Disconnect() end
-        if addedConnection then addedConnection:Disconnect() end
-        followConnection, addedConnection = nil, nil
     end
 end
 
--- === Respawn Handling ===
-LocalPlayer.CharacterAdded:Connect(function(char)
-    local humanoidRootPart = char:WaitForChild("HumanoidRootPart")
-    if blackHoleActive then
-        toggleBlackHole(humanoidRootPart, true)
-    end
-end)
+local function createControlUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BlackHoleControlGUI"
+    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-Section:CreateButton("tiktok:@flandrescript", function()
-    print("Credit: @flandrescript")
-end)
+    -- Background frame
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 180, 0, 120)
+    frame.Position = UDim2.new(0.5, -90, 0.3, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = screenGui
 
-Section:CreateButton("Skid = Gay", function()
-    print("Credit: @flandrescript")
-end)
+    -- UICorner bo tròn
+    local corner = Instance.new("UICorner", frame)
+    corner.CornerRadius = UDim.new(0, 10)
 
-Section:CreateToggle("Black Hole", function(value)
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+    -- Button bật/tắt hút
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 160, 0, 40)
+    button.Position = UDim2.new(0, 10, 0, 10)
+    button.Text = "bật hút"
+    button.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 20
+    button.Parent = frame
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
 
-    toggleBlackHole(humanoidRootPart, value) -- bật/tắt thực sự
-    print("Black Hole state:", value)
-end)
+    -- Button tự hủy
+    local destroyButton = Instance.new("TextButton")
+    destroyButton.Size = UDim2.new(0, 160, 0, 40)
+    destroyButton.Position = UDim2.new(0, 10, 0, 65)
+    destroyButton.Text = "Xóa Black Hole"
+    destroyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    destroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    destroyButton.Font = Enum.Font.SourceSansBold
+    destroyButton.TextSize = 20
+    destroyButton.Parent = frame
+    Instance.new("UICorner", destroyButton).CornerRadius = UDim.new(0, 8)
+
+    -- Kết nối chức năng
+    button.MouseButton1Click:Connect(function()
+        toggleBlackHole()
+        if blackHoleActive then
+            button.Text = "tắt hút"
+        else
+            button.Text = "bật hút"
+        end
+    end)
+
+    destroyButton.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        Folder:Destroy()
+        getgenv().Network = nil
+        script:Destroy()
+    end)
+end
+
+createControlUI()
+toggleBlackHole()
