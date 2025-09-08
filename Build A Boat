@@ -1,0 +1,45 @@
+-- Load UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard"))()
+
+-- Window
+local Window = Library:NewWindow("Flandre Hub")
+
+-- Section
+local Section = Window:NewSection("build a boat for treasure")
+
+Section:CreateButton("tiktok,youtube:@flandrescript", function()
+    print("Credit: @flandrescript")
+end)
+
+Section:CreateButton("Skid = Gay", function()
+    print("Credit: @flandrescript")
+end)
+
+-- Biến điều khiển
+getgenv().ShareBlocksLoop = false
+local lastState = false
+
+-- Vòng lặp duy nhất
+task.spawn(function()
+    while task.wait() do
+        if getgenv().ShareBlocksLoop then
+            pcall(function()
+                workspace.SettingFunction:InvokeServer("ShareBlocks", true)
+            end)
+            lastState = true
+        else
+            if lastState then
+                pcall(function()
+                    workspace.SettingFunction:InvokeServer("ShareBlocks", false)
+                end)
+                lastState = false
+            end
+        end
+    end
+end)
+
+-- Toggle UI
+Section:CreateToggle("Share mode", function(value)
+    getgenv().ShareBlocksLoop = value
+    print("Share Mode Status:", value)
+end)
