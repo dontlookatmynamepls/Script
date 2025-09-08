@@ -5,7 +5,7 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/blood
 local Window = Library:NewWindow("Build A Boat For Treasure")
 
 -- Section
-local Section = Window:NewSection("Misc")
+local Section = Window:NewSection("Main")
 
 Section:CreateButton("tiktok,youtube:@flandrescript", function()
     print("Credit: @flandrescript")
