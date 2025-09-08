@@ -2,10 +2,10 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard"))()
 
 -- Window
-local Window = Library:NewWindow("Flandre Hub")
+local Window = Library:NewWindow("Build A Boat For Treasure")
 
 -- Section
-local Section = Window:NewSection("build a boat for treasure")
+local Section = Window:NewSection("Misc")
 
 Section:CreateButton("tiktok,youtube:@flandrescript", function()
     print("Credit: @flandrescript")
