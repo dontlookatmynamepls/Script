@@ -15,17 +15,19 @@ function SimpleWindUI:CreateWindow(title, subtitle, size, autoscale)
 
     -- Main Frame
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = autoscale and UDim2.new(0, size.X, 0, size.Y) or UDim2.new(size.X.Scale, size.X.Offset, size.Y.Scale, size.Y.Offset)
-    mainFrame.Position = UDim2.new(0.5, -size.X/2, 0.5, -size.Y/2)
+    if autoscale then
+        -- When autoscale = true, use offset from UDim2 and apply UIAspectRatioConstraint
+        mainFrame.Size = UDim2.new(0, size.X.Offset, 0, size.Y.Offset)
+        local aspectRatio = Instance.new("UIAspectRatioConstraint")
+        aspectRatio.Parent = mainFrame
+    else
+        -- When autoscale = false, use the original UDim2
+        mainFrame.Size = size
+    end
+    mainFrame.Position = UDim2.new(0.5, -mainFrame.Size.X.Offset / 2, 0.5, -mainFrame.Size.Y.Offset / 2)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     mainFrame.BorderSizePixel = 0
     mainFrame.Parent = screenGui
-
-    -- Auto Scale
-    if autoscale then
-        local aspectRatio = Instance.new("UIAspectRatioConstraint")
-        aspectRatio.Parent = mainFrame
-    end
 
     -- Draggable
     local dragging, dragInput, dragStart, startPos
@@ -117,7 +119,7 @@ function SimpleWindUI:CreateWindow(title, subtitle, size, autoscale)
     local minimized = false
     minimizeButton.MouseButton1Click:Connect(function()
         minimized = not minimized
-        mainFrame.Size = minimized and UDim2.new(mainFrame.Size.X, UDim2.new(0, 30)) or (autoscale and UDim2.new(0, size.X, 0, size.Y) or UDim2.new(size.X.Scale, size.X.Offset, size.Y.Scale, size.Y.Offset))
+        mainFrame.Size = minimized and UDim2.new(mainFrame.Size.X.Scale, mainFrame.Size.X.Offset, 0, 30) or (autoscale and UDim2.new(0, size.X.Offset, 0, size.Y.Offset) or size)
     end)
 
     -- Tab Frame
