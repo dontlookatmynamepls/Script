@@ -1,7 +1,3 @@
--- TurtleUiLib (MoonSec rework)
--- Based on the Turtle UI code you provided
--- Added: Close button, Auto Scroll, Multi-window spawn, Image support
-
 local library = {}
 local windowCount = 0
 local sizes = {}
@@ -13,8 +9,6 @@ local dropdownSizes = {}
 local destroyed
 
 local colorPickers = {}
-
-local MaxElementsBeforeScroll = 10 -- changeable threshold
 
 if game.CoreGui:FindFirstChild('TurtleUiLib') then
     game.CoreGui:FindFirstChild('TurtleUiLib'):Destroy()
@@ -62,27 +56,29 @@ end
 -- Instances:
 
 local function protect_gui(obj) 
-    if destroyed then
-       obj.Parent = game.CoreGui
-       return
-    end
-    if syn and syn.protect_gui then
-        syn.protect_gui(obj)
-        obj.Parent = game.CoreGui
-    elseif PROTOSMASHER_LOADED then
-        obj.Parent = get_hidden_gui()
-    else
-        obj.Parent = game.CoreGui
-    end
+if destroyed then
+   obj.Parent = game.CoreGui
+   return
 end
-
+if syn and syn.protect_gui then
+syn.protect_gui(obj)
+obj.Parent = game.CoreGui
+elseif PROTOSMASHER_LOADED then
+obj.Parent = get_hidden_gui()
+else
+obj.Parent = game.CoreGui
+end
+end
 local TurtleUiLib = Instance.new("ScreenGui")
+
 TurtleUiLib.Name = "TurtleUiLib"
+
 protect_gui(TurtleUiLib)
 
 local xOffset = 20
 
 local uis = game:GetService("UserInputService")
+
 local keybindConnection
 
 function library:Destroy()
@@ -91,7 +87,6 @@ function library:Destroy()
         keybindConnection:Disconnect()
     end
 end
-
 function library:Keybind(key)
     if keybindConnection then keybindConnection:Disconnect() end
 
@@ -135,18 +130,14 @@ function library:Window(name)
     HeaderText.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     HeaderText.BackgroundTransparency = 1.000
     HeaderText.Position = UDim2.new(0, 0, -0.0020698905, 0)
-    HeaderText.Size = UDim2.new(0, 120, 0, 33)
+    HeaderText.Size = UDim2.new(0, 206, 0, 33)
     HeaderText.ZIndex = 6 + zindex
     HeaderText.Font = Enum.Font.SourceSans
     HeaderText.Text = name or "Window"
     HeaderText.TextColor3 = Color3.fromRGB(47, 54, 64)
     HeaderText.TextSize = 17.000
-    HeaderText.TextXAlignment = Enum.TextXAlignment.Left
-    HeaderText.TextYAlignment = Enum.TextYAlignment.Center
-    HeaderText.TextScaled = false
 
     local Minimise = Instance.new("TextButton")
-    local Close = Instance.new("TextButton")
     local Window = Instance.new("Frame")
     Minimise.Name = "Minimise"
     Minimise.Parent = Header
@@ -159,119 +150,37 @@ function library:Window(name)
     Minimise.Text = "_"
     Minimise.TextColor3 = Color3.fromRGB(0, 0, 0)
     Minimise.TextSize = 20.000
-
-    -- Close button added
-    Close.Name = "Close"
-    Close.Parent = Header
-    Close.BackgroundColor3 = Color3.fromRGB(0, 168, 255)
-    Close.BorderColor3 = Color3.fromRGB(0, 168, 255)
-    Close.Position = UDim2.new(0, 160, 0, 2) -- left of minimise
-    Close.Size = UDim2.new(0, 22, 0, 22)
-    Close.ZIndex = 7 + zindex
-    Close.Font = Enum.Font.SourceSansLight
-    Close.Text = "×"
-    Close.TextColor3 = Color3.fromRGB(200, 40, 40)
-    Close.TextSize = 18.000
+    Minimise.MouseButton1Up:connect(function()
+        Window.Visible = not Window.Visible
+	if Window.Visible then
+		Minimise.Text = "_"
+	else
+		Minimise.Text = "+"
+	end
+    end)
 
     Window.Name = "Window"
-    Window.Parent = UiWindow
+    Window.Parent = Header
     Window.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
     Window.BorderColor3 = Color3.fromRGB(47, 54, 64)
     Window.Position = UDim2.new(0, 0, 0, 0)
     Window.Size = UDim2.new(0, 207, 0, 33)
     Window.ZIndex = 1 + zindex
 
-    -- We'll use an inner container (start as Frame). If elements exceed threshold, convert to ScrollingFrame.
-    local Content = Instance.new("Frame")
-    Content.Name = "Content"
-    Content.Parent = UiWindow
-    Content.BackgroundTransparency = 1
-    Content.Position = UDim2.new(0, 0, 0, 28)
-    Content.Size = UDim2.new(0, 207, 0, 33)
-    Content.ZIndex = 2 + zindex
-
-    local UIList = Instance.new("UIListLayout", Content)
-    UIList.Padding = UDim.new(0, 5)
-    -- AutomaticCanvasSize will be used on conversion to ScrollingFrame
-
-    local Elements = 0
+    local functions = {}
     sizes[winCount] = 33
     listOffset[winCount] = 10
-
-    local function ConvertToScrolling()
-        -- If already ScrollingFrame, skip
-        if Content:IsA("ScrollingFrame") then return end
-
-        local scroll = Instance.new("ScrollingFrame")
-        scroll.Name = "ContentScroll"
-        scroll.Parent = UiWindow
-        scroll.Active = true
-        scroll.BackgroundTransparency = 1
-        scroll.Position = Content.Position
-        scroll.Size = UDim2.new(Content.Size.X.Scale, Content.Size.X.Offset, Content.Size.Y.Scale, Content.Size.Offset)
-        scroll.BorderSizePixel = 0
-        scroll.CanvasSize = UDim2.new(0,0,0,0)
-        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        scroll.ScrollBarThickness = 6
-        scroll.ScrollBarImageColor3 = Color3.fromRGB(220,220,220)
-        scroll.ZIndex = 2 + zindex
-
-        -- move children except UIListLayout
-        for _, c in ipairs(Content:GetChildren()) do
-            if c ~= UIList then
-                c.Parent = scroll
-            end
-        end
-        UIList.Parent = scroll
-        Content:Destroy()
-        Content = scroll
-    end
-
-    -- Minimise behavior toggles Content visibility
-    Minimise.MouseButton1Up:Connect(function()
-        if Content then
-            Content.Visible = not Content.Visible
-            if Content.Visible then
-                Minimise.Text = "_"
-            else
-                Minimise.Text = "+"
-            end
-        end
-    end)
-    -- Close destroys window
-    Close.MouseButton1Up:Connect(function()
-        UiWindow:Destroy()
-    end)
-
-    local functions = {}
-
     function functions:Button(name, callback)
         local name = name or "Button"
         local callback = callback or function() end
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + 32
-
-        -- If elements pass threshold, convert to scrolling content and stop resizing UiWindow height
-        if Elements == MaxElementsBeforeScroll + 1 then
-            -- preserve visible height: set Content size based on current Window size minus header
-            local desiredHeight = 200 -- default visible height (if you want a different default you can change)
-            -- set UiWindow to hold header + desiredHeight
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + desiredHeight)
-            Content.Size = UDim2.new(0, 207, 0, desiredHeight)
-            ConvertToScrolling()
-        end
-
-        -- If still not converted, expand UiWindow as original behavior
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         local Button = Instance.new("TextButton")
         listOffset[winCount] = listOffset[winCount] + 32
         Button.Name = "Button"
-        Button.Parent = Content
+        Button.Parent = Window
         Button.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
         Button.BorderColor3 = Color3.fromRGB(113, 128, 147)
         Button.Position = UDim2.new(0, 12, 0, listOffset[winCount])
@@ -288,28 +197,16 @@ function library:Window(name)
 
         pastSliders[winCount] = false
     end
-
     function functions:Label(text, color)
         local color = color or Color3.fromRGB(220, 221, 225)
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + 32
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         listOffset[winCount] = listOffset[winCount] + 32
         local Label = Instance.new("TextLabel")
         Label.Name = "Label"
-        Label.Parent = Content
+        Label.Parent = Window
         Label.BackgroundColor3 = Color3.fromRGB(220, 221, 225)
         Label.BackgroundTransparency = 1.000
         Label.BorderColor3 = Color3.fromRGB(27, 42, 53)
@@ -332,23 +229,11 @@ function library:Window(name)
         end
         pastSliders[winCount] = false
     end
-
     function functions:Toggle(text, on, callback)
         local callback = callback or function() end
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + 32
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         listOffset[winCount] = listOffset[winCount] + 32
 
@@ -357,7 +242,7 @@ function library:Window(name)
         local ToggleFiller = Instance.new("Frame")
 
         ToggleDescription.Name = "ToggleDescription"
-        ToggleDescription.Parent = Content
+        ToggleDescription.Parent = Window
         ToggleDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
         ToggleDescription.BackgroundTransparency = 1.000
         ToggleDescription.Position = UDim2.new(0, 14, 0, listOffset[winCount])
@@ -396,28 +281,16 @@ function library:Window(name)
         ToggleFiller.ZIndex = 2 + zindex
         pastSliders[winCount] = false
     end
-
     function functions:Box(text, callback)
         local callback = callback or function() end
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + 32
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         listOffset[winCount] = listOffset[winCount] + 32
         local TextBox = Instance.new("TextBox")
         local BoxDescription = Instance.new("TextLabel")
-        TextBox.Parent = Content
+        TextBox.Parent = Window
         TextBox.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
         TextBox.BorderColor3 = Color3.fromRGB(113, 128, 147)
         TextBox.Position = UDim2.new(0, 99, 0, listOffset[winCount])
@@ -430,7 +303,7 @@ function library:Window(name)
         TextBox.TextSize = 16.000
         TextBox.TextStrokeColor3 = Color3.fromRGB(245, 246, 250)
         TextBox.ZIndex = 2 + zindex
-        TextBox:GetPropertyChangedSignal('Text'):Connect(function()
+        TextBox:GetPropertyChangedSignal('Text'):connect(function()
             callback(TextBox.Text, false)
         end)
         TextBox.FocusLost:Connect(function()
@@ -451,7 +324,6 @@ function library:Window(name)
         BoxDescription.ZIndex = 2 + zindex
         pastSliders[winCount] = false
     end
-
     function functions:Slider(text, min, max, default, callback)
         local text = text or "Slider"
         local min = min or 1
@@ -469,19 +341,8 @@ function library:Window(name)
             offset = 60
         end
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + offset
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         listOffset[winCount] = listOffset[winCount] + offset
 
@@ -493,47 +354,45 @@ function library:Window(name)
         local Min = Instance.new("TextLabel")
         local Max = Instance.new("TextLabel")
 
-        local isdragging, minitial, initialLocal
-
         function SliderMovement(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 isdragging = true;
-                minitial = input.Position.X;
-                initialLocal = SliderButton.Position.X.Offset;
-                local delta1 = SliderButton.AbsolutePosition.X - initialLocal
-                local con;
-                con = stepped:Connect(function()
-                    if isdragging then
-                        local xOffset = mouse.X - delta1 - 3
-                        if xOffset > 175 then
-                            xOffset = 175
-                        elseif xOffset< 0 then
-                            xOffset = 0
-                        end
-                        SliderButton.Position = UDim2.new(0, xOffset , -1.333337, 0);
-                        SilderFiller.Size = UDim2.new(0, xOffset, 0, 6)
-                        local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
-                        Current.Text = tostring(math.round(value))
-                    else
-                        con:Disconnect();
-                    end;
-                end);
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        isdragging = false;
-                    end;
-                end);
+                    minitial = input.Position.X;
+                    initial = SliderButton.Position.X.Offset;
+                    local delta1 = SliderButton.AbsolutePosition.X - initial
+                    local con;
+                    con = stepped:Connect(function()
+                        if isdragging then
+                            local xOffset = mouse.X - delta1 - 3
+                            if xOffset > 175 then
+                                xOffset = 175
+                            elseif xOffset< 0 then
+                                xOffset = 0
+                            end
+                            SliderButton.Position = UDim2.new(0, xOffset , -1.33333337, 0);
+                            SilderFiller.Size = UDim2.new(0, xOffset, 0, 6)
+                            local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
+                            Current.Text = tostring(math.round(value))
+                        else
+                            con:Disconnect();
+                        end;
+                    end);
+                    input.Changed:Connect(function()
+                        if input.UserInputState == Enum.UserInputState.End then
+                            isdragging = false;
+                        end;
+                    end);
             end;
         end
         function SliderEnd(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
-                callback(math.round(value))
+            local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
+            callback(math.round(value))
             end
         end
 
         Slider.Name = "Slider"
-        Slider.Parent = Content
+        Slider.Parent = Window
         Slider.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
         Slider.BorderColor3 = Color3.fromRGB(113, 128, 147)
         Slider.Position = UDim2.new(0, 13, 0, listOffset[winCount])
@@ -610,7 +469,6 @@ function library:Window(name)
         Max.ZIndex = 2 + zindex
         pastSliders[winCount] = true
     end
-
     function functions:Dropdown(text, buttons, callback)
         local text = text or "Dropdown"
         local buttons = buttons or {}
@@ -620,24 +478,13 @@ function library:Window(name)
         local DownSign = Instance.new("TextLabel")
         local DropdownFrame = Instance.new("ScrollingFrame")
 
-        Elements = Elements + 1
         sizes[winCount] = sizes[winCount] + 32
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
 
         listOffset[winCount] = listOffset[winCount] + 32
 
         Dropdown.Name = "Dropdown"
-        Dropdown.Parent = Content
+        Dropdown.Parent = Window
         Dropdown.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
         Dropdown.BorderColor3 = Color3.fromRGB(113, 128, 147)
         Dropdown.Position = UDim2.new(0, 12, 0, listOffset[winCount])
@@ -654,7 +501,13 @@ function library:Window(name)
             for i, v in pairs(dropdowns) do
                 if v ~= DropdownFrame then
                 v.Visible = false
+                DownSign.Rotation = 0
                 end
+            end
+            if DropdownFrame.Visible then
+                DownSign.Rotation = 0
+            else
+                DownSign.Rotation = 180
             end
             DropdownFrame.Visible = not DropdownFrame.Visible
         end)
@@ -709,7 +562,7 @@ function library:Window(name)
             canvasSize = canvasSize + 27
             DropdownFrame.CanvasSize = UDim2.new(0, 182, 0, canvasSize + 1)
             if #DropdownFrame:GetChildren() < 8 then
-                DropdownFrame.Size = UDim2.new(0, 182, 0, DropdownFrame.Size.Y.Offset + 27)
+            DropdownFrame.Size = UDim2.new(0, 182, 0, DropdownFrame.Size.Y.Offset + 27)
             end
             Button_2.MouseButton1Up:Connect(function()
                 callback(name)
@@ -743,23 +596,8 @@ function library:Window(name)
 
         return dropFunctions
     end
-
     function functions:ColorPicker(name, default, callback)
         local callback = callback or function() end
-
-        Elements = Elements + 1
-        sizes[winCount] = sizes[winCount] + 32
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
 
         local ColorPicker = Instance.new("TextButton")
         local PickerCorner = Instance.new("UICorner")
@@ -780,8 +618,13 @@ function library:Window(name)
         local ColorCorner = Instance.new("UICorner")
         local BlackOverlay = Instance.new("ImageLabel")
 
+        sizes[winCount] = sizes[winCount] + 32
+        Window.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+
+        listOffset[winCount] = listOffset[winCount] + 32
+
         ColorPicker.Name = "ColorPicker"
-        ColorPicker.Parent = Content
+        ColorPicker.Parent = Window
         ColorPicker.Position = UDim2.new(0, 137, 0, listOffset[winCount])
         ColorPicker.Size = UDim2.new(0, 57, 0, 26)
         ColorPicker.Font = Enum.Font.SourceSans
@@ -1070,36 +913,6 @@ function library:Window(name)
 	        end
 	    end
 	return colorFuncs
-    end
-
-    -- NEW: Image support function
-    function functions:Image(url)
-        -- Accept either rbxassetid:// or raw https link
-        url = url or ""
-        Elements = Elements + 1
-        sizes[winCount] = sizes[winCount] + 105
-
-        if Elements == MaxElementsBeforeScroll + 1 then
-            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
-            Content.Size = UDim2.new(0, 207, 0, 200)
-            ConvertToScrolling()
-        end
-
-        if not Content:IsA("ScrollingFrame") then
-            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
-            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
-        end
-
-        listOffset[winCount] = listOffset[winCount] + 105
-        local ImageLabel = Instance.new("ImageLabel")
-        ImageLabel.Name = "Image"
-        ImageLabel.Parent = Content
-        ImageLabel.BackgroundTransparency = 1
-        ImageLabel.Position = UDim2.new(0, 4, 0, listOffset[winCount])
-        ImageLabel.Size = UDim2.new(0, 198, 0, 100)
-        ImageLabel.ZIndex = 2 + zindex
-        ImageLabel.Image = url
-        ImageLabel.ScaleType = Enum.ScaleType.Fit
     end
 
     return functions
