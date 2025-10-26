@@ -1,272 +1,1108 @@
---// MoonLib v2 UI Library by Moonsec
---// Inspired by TurtleUI, ToraIsMeUI
---// Supports multi-window spawn & auto scrollbar
+-- TurtleUiLib (MoonSec rework)
+-- Based on the Turtle UI code you provided
+-- Added: Close button, Auto Scroll, Multi-window spawn, Image support
 
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
+local library = {}
+local windowCount = 0
+local sizes = {}
+local listOffset = {}
+local windows = {}
+local pastSliders = {}
+local dropdowns = {}
+local dropdownSizes = {}
+local destroyed
 
-local MoonLib = {}
-MoonLib.Windows = {}
-MoonLib.Settings = {
-    WindowGap = 10,
-    StartPos = UDim2.new(0.05, 0, 0.1, 0),
-    MaxElementsBeforeScroll = 10
-}
+local colorPickers = {}
 
--- Helper
-local function CreateInstance(class, props)
-    local obj = Instance.new(class)
-    for i, v in pairs(props) do
-        obj[i] = v
-    end
-    return obj
+local MaxElementsBeforeScroll = 10 -- changeable threshold
+
+if game.CoreGui:FindFirstChild('TurtleUiLib') then
+    game.CoreGui:FindFirstChild('TurtleUiLib'):Destroy()
+    destroyed = true
 end
 
---// CREATE WINDOW
-function MoonLib:CreateWindow(title, size)
-    size = size or UDim2.new(0, 300, 0, 250)
-    local totalWidth = 0
-    for _, win in ipairs(self.Windows) do
-        totalWidth += win.Frame.Size.X.Offset + self.Settings.WindowGap
+function Lerp(a, b, c)
+    return a + ((b - a) * c)
+end
+
+local players = game:service('Players');
+local player = players.LocalPlayer;
+local mouse = player:GetMouse();
+local run = game:service('RunService');
+local stepped = run.Stepped;
+function Dragify(obj)
+	spawn(function()
+		local minitial;
+		local initial;
+		local isdragging;
+	    obj.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				isdragging = true;
+				minitial = input.Position;
+				initial = obj.Position;
+				local con;
+                con = stepped:Connect(function()
+        			if isdragging then
+						local delta = Vector3.new(mouse.X, mouse.Y, 0) - minitial;
+						obj.Position = UDim2.new(initial.X.Scale, initial.X.Offset + delta.X, initial.Y.Scale, initial.Y.Offset + delta.Y);
+					else
+						con:Disconnect();
+					end;
+                end);
+                input.Changed:Connect(function()
+    			    if input.UserInputState == Enum.UserInputState.End then
+					    isdragging = false;
+				    end;
+			    end);
+		end;
+	end);
+end)
+end
+
+-- Instances:
+
+local function protect_gui(obj) 
+    if destroyed then
+       obj.Parent = game.CoreGui
+       return
     end
+    if syn and syn.protect_gui then
+        syn.protect_gui(obj)
+        obj.Parent = game.CoreGui
+    elseif PROTOSMASHER_LOADED then
+        obj.Parent = get_hidden_gui()
+    else
+        obj.Parent = game.CoreGui
+    end
+end
 
-    local ScreenGui = CreateInstance("ScreenGui", {
-        Name = "MoonLibUI_"..title,
-        ResetOnSpawn = false,
-        Parent = CoreGui
-    })
+local TurtleUiLib = Instance.new("ScreenGui")
+TurtleUiLib.Name = "TurtleUiLib"
+protect_gui(TurtleUiLib)
 
-    local Frame = CreateInstance("Frame", {
-        Parent = ScreenGui,
-        BackgroundColor3 = Color3.fromRGB(25, 25, 30),
-        BorderSizePixel = 0,
-        Size = size,
-        Position = UDim2.new(0, totalWidth + 50, 0.1, 0),
-        Draggable = true,
-        Active = true
-    })
+local xOffset = 20
 
-    local TopBar = CreateInstance("Frame", {
-        Parent = Frame,
-        BackgroundColor3 = Color3.fromRGB(35, 35, 45),
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 30)
-    })
+local uis = game:GetService("UserInputService")
+local keybindConnection
 
-    local TitleLabel = CreateInstance("TextLabel", {
-        Parent = TopBar,
-        Text = title or "Window",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 1,
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        Position = UDim2.new(0, 8, 0, 0),
-        Size = UDim2.new(0.7, 0, 1, 0),
-        TextXAlignment = Enum.TextXAlignment.Left
-    })
+function library:Destroy()
+    TurtleUiLib:Destroy()
+    if keybindConnection then
+        keybindConnection:Disconnect()
+    end
+end
 
-    local MinimizeBtn = CreateInstance("TextButton", {
-        Parent = TopBar,
-        Text = "-",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        TextSize = 18,
-        Size = UDim2.new(0, 25, 1, 0),
-        Position = UDim2.new(1, -50, 0, 0)
-    })
+function library:Keybind(key)
+    if keybindConnection then keybindConnection:Disconnect() end
 
-    local CloseBtn = CreateInstance("TextButton", {
-        Parent = TopBar,
-        Text = "×",
-        TextColor3 = Color3.fromRGB(255, 85, 85),
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        TextSize = 18,
-        Size = UDim2.new(0, 25, 1, 0),
-        Position = UDim2.new(1, -25, 0, 0)
-    })
+    keybindConnection = uis.InputBegan:Connect(function(input, gp)
+        if not gp and input.KeyCode == Enum.KeyCode[key] then
+            TurtleUiLib.Enabled = not TurtleUiLib.Enabled
+        end
+    end)
+end
 
-    local Main = CreateInstance("Frame", {
-        Parent = Frame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -30),
-        Position = UDim2.new(0, 0, 0, 30)
-    })
+function library:Window(name) 
+    windowCount = windowCount + 1
+    local winCount = windowCount
+    local zindex = winCount * 7
+    local UiWindow = Instance.new("Frame")
 
-    local UIList = CreateInstance("UIListLayout", {
-        Parent = Main,
-        Padding = UDim.new(0, 5)
-    })
+    UiWindow.Name = "UiWindow"
+    UiWindow.Parent = TurtleUiLib
+    UiWindow.BackgroundColor3 = Color3.fromRGB(0, 151, 230)
+    UiWindow.BorderColor3 = Color3.fromRGB(0, 151, 230)
+    UiWindow.Position = UDim2.new(0, xOffset, 0, 20)
+    UiWindow.Size = UDim2.new(0, 207, 0, 33)
+    UiWindow.ZIndex = 4 + zindex
+    UiWindow.Active = true
+    Dragify(UiWindow)
+
+    xOffset = xOffset + 230
+
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Parent = UiWindow
+    Header.BackgroundColor3 = Color3.fromRGB(0, 168, 255)
+    Header.BorderColor3 = Color3.fromRGB(0, 168, 255)
+    Header.Position = UDim2.new(0, 0, -0.0202544238, 0)
+    Header.Size = UDim2.new(0, 207, 0, 26)
+    Header.ZIndex = 5 + zindex
+
+    local HeaderText = Instance.new("TextLabel")
+    HeaderText.Name = "HeaderText"
+    HeaderText.Parent = Header
+    HeaderText.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    HeaderText.BackgroundTransparency = 1.000
+    HeaderText.Position = UDim2.new(0, 0, -0.0020698905, 0)
+    HeaderText.Size = UDim2.new(0, 120, 0, 33)
+    HeaderText.ZIndex = 6 + zindex
+    HeaderText.Font = Enum.Font.SourceSans
+    HeaderText.Text = name or "Window"
+    HeaderText.TextColor3 = Color3.fromRGB(47, 54, 64)
+    HeaderText.TextSize = 17.000
+    HeaderText.TextXAlignment = Enum.TextXAlignment.Left
+    HeaderText.TextYAlignment = Enum.TextYAlignment.Center
+    HeaderText.TextScaled = false
+
+    local Minimise = Instance.new("TextButton")
+    local Close = Instance.new("TextButton")
+    local Window = Instance.new("Frame")
+    Minimise.Name = "Minimise"
+    Minimise.Parent = Header
+    Minimise.BackgroundColor3 = Color3.fromRGB(0, 168, 255)
+    Minimise.BorderColor3 = Color3.fromRGB(0, 168, 255)
+    Minimise.Position = UDim2.new(0, 185, 0, 2)
+    Minimise.Size = UDim2.new(0, 22, 0, 22)
+    Minimise.ZIndex = 7 + zindex
+    Minimise.Font = Enum.Font.SourceSansLight
+    Minimise.Text = "_"
+    Minimise.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Minimise.TextSize = 20.000
+
+    -- Close button added
+    Close.Name = "Close"
+    Close.Parent = Header
+    Close.BackgroundColor3 = Color3.fromRGB(0, 168, 255)
+    Close.BorderColor3 = Color3.fromRGB(0, 168, 255)
+    Close.Position = UDim2.new(0, 160, 0, 2) -- left of minimise
+    Close.Size = UDim2.new(0, 22, 0, 22)
+    Close.ZIndex = 7 + zindex
+    Close.Font = Enum.Font.SourceSansLight
+    Close.Text = "×"
+    Close.TextColor3 = Color3.fromRGB(200, 40, 40)
+    Close.TextSize = 18.000
+
+    Window.Name = "Window"
+    Window.Parent = UiWindow
+    Window.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+    Window.BorderColor3 = Color3.fromRGB(47, 54, 64)
+    Window.Position = UDim2.new(0, 0, 0, 0)
+    Window.Size = UDim2.new(0, 207, 0, 33)
+    Window.ZIndex = 1 + zindex
+
+    -- We'll use an inner container (start as Frame). If elements exceed threshold, convert to ScrollingFrame.
+    local Content = Instance.new("Frame")
+    Content.Name = "Content"
+    Content.Parent = UiWindow
+    Content.BackgroundTransparency = 1
+    Content.Position = UDim2.new(0, 0, 0, 28)
+    Content.Size = UDim2.new(0, 207, 0, 33)
+    Content.ZIndex = 2 + zindex
+
+    local UIList = Instance.new("UIListLayout", Content)
+    UIList.Padding = UDim.new(0, 5)
+    -- AutomaticCanvasSize will be used on conversion to ScrollingFrame
 
     local Elements = 0
-    local function CheckScroll()
-        Elements += 1
-        if Elements == MoonLib.Settings.MaxElementsBeforeScroll + 1 then
-            -- convert to scroll frame
-            local scroll = Instance.new("ScrollingFrame")
-            scroll.Parent = Frame
-            scroll.BackgroundTransparency = 1
-            scroll.Size = Main.Size
-            scroll.Position = Main.Position
-            scroll.BorderSizePixel = 0
-            scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-            scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-            scroll.ScrollBarThickness = 4
-            scroll.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 255)
+    sizes[winCount] = 33
+    listOffset[winCount] = 10
 
-            -- move old children
-            for _, c in ipairs(Main:GetChildren()) do
-                if not c:IsA("UIListLayout") then
-                    c.Parent = scroll
+    local function ConvertToScrolling()
+        -- If already ScrollingFrame, skip
+        if Content:IsA("ScrollingFrame") then return end
+
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Name = "ContentScroll"
+        scroll.Parent = UiWindow
+        scroll.Active = true
+        scroll.BackgroundTransparency = 1
+        scroll.Position = Content.Position
+        scroll.Size = UDim2.new(Content.Size.X.Scale, Content.Size.X.Offset, Content.Size.Y.Scale, Content.Size.Offset)
+        scroll.BorderSizePixel = 0
+        scroll.CanvasSize = UDim2.new(0,0,0,0)
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.ScrollBarThickness = 6
+        scroll.ScrollBarImageColor3 = Color3.fromRGB(220,220,220)
+        scroll.ZIndex = 2 + zindex
+
+        -- move children except UIListLayout
+        for _, c in ipairs(Content:GetChildren()) do
+            if c ~= UIList then
+                c.Parent = scroll
+            end
+        end
+        UIList.Parent = scroll
+        Content:Destroy()
+        Content = scroll
+    end
+
+    -- Minimise behavior toggles Content visibility
+    Minimise.MouseButton1Up:Connect(function()
+        if Content then
+            Content.Visible = not Content.Visible
+            if Content.Visible then
+                Minimise.Text = "_"
+            else
+                Minimise.Text = "+"
+            end
+        end
+    end)
+    -- Close destroys window
+    Close.MouseButton1Up:Connect(function()
+        UiWindow:Destroy()
+    end)
+
+    local functions = {}
+
+    function functions:Button(name, callback)
+        local name = name or "Button"
+        local callback = callback or function() end
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        -- If elements pass threshold, convert to scrolling content and stop resizing UiWindow height
+        if Elements == MaxElementsBeforeScroll + 1 then
+            -- preserve visible height: set Content size based on current Window size minus header
+            local desiredHeight = 200 -- default visible height (if you want a different default you can change)
+            -- set UiWindow to hold header + desiredHeight
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + desiredHeight)
+            Content.Size = UDim2.new(0, 207, 0, desiredHeight)
+            ConvertToScrolling()
+        end
+
+        -- If still not converted, expand UiWindow as original behavior
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        local Button = Instance.new("TextButton")
+        listOffset[winCount] = listOffset[winCount] + 32
+        Button.Name = "Button"
+        Button.Parent = Content
+        Button.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+        Button.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        Button.Position = UDim2.new(0, 12, 0, listOffset[winCount])
+        Button.Size = UDim2.new(0, 182, 0, 26)
+        Button.ZIndex = 2 + zindex
+        Button.Selected = true
+        Button.Font = Enum.Font.SourceSans
+        Button.TextColor3 = Color3.fromRGB(245, 246, 250)
+        Button.TextSize = 16.000
+        Button.TextStrokeTransparency = 123.000
+        Button.TextWrapped = true
+        Button.Text = name
+        Button.MouseButton1Down:Connect(callback)
+
+        pastSliders[winCount] = false
+    end
+
+    function functions:Label(text, color)
+        local color = color or Color3.fromRGB(220, 221, 225)
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + 32
+        local Label = Instance.new("TextLabel")
+        Label.Name = "Label"
+        Label.Parent = Content
+        Label.BackgroundColor3 = Color3.fromRGB(220, 221, 225)
+        Label.BackgroundTransparency = 1.000
+        Label.BorderColor3 = Color3.fromRGB(27, 42, 53)
+        Label.Position = UDim2.new(0, 0, 0, listOffset[winCount])
+        Label.Size = UDim2.new(0, 206, 0, 29)
+        Label.Font = Enum.Font.SourceSans
+        Label.Text = text or "Label"
+        Label.TextSize = 16.000
+        Label.ZIndex = 2 + zindex
+
+        if type(color) == "boolean" and color then
+	    spawn(function()
+                while wait() do
+                    local hue = tick() % 5 / 5
+                    Label.TextColor3 = Color3.fromHSV(hue, 1, 1)
+                end
+	    end)
+        else
+            Label.TextColor3 = color
+        end
+        pastSliders[winCount] = false
+    end
+
+    function functions:Toggle(text, on, callback)
+        local callback = callback or function() end
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + 32
+
+        local ToggleDescription = Instance.new("TextLabel")
+        local ToggleButton = Instance.new("TextButton")
+        local ToggleFiller = Instance.new("Frame")
+
+        ToggleDescription.Name = "ToggleDescription"
+        ToggleDescription.Parent = Content
+        ToggleDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        ToggleDescription.BackgroundTransparency = 1.000
+        ToggleDescription.Position = UDim2.new(0, 14, 0, listOffset[winCount])
+        ToggleDescription.Size = UDim2.new(0, 131, 0, 26)
+        ToggleDescription.Font = Enum.Font.SourceSans
+        ToggleDescription.Text = text or "Toggle"
+        ToggleDescription.TextColor3 = Color3.fromRGB(245, 246, 250)
+        ToggleDescription.TextSize = 16.000
+        ToggleDescription.TextWrapped = true
+        ToggleDescription.TextXAlignment = Enum.TextXAlignment.Left
+        ToggleDescription.ZIndex = 2 + zindex
+
+        ToggleButton.Name = "ToggleButton"
+        ToggleButton.Parent = ToggleDescription
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+        ToggleButton.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        ToggleButton.Position = UDim2.new(1.2061069, 0, 0.0769230798, 0)
+        ToggleButton.Size = UDim2.new(0, 22, 0, 22)
+        ToggleButton.Font = Enum.Font.SourceSans
+        ToggleButton.Text = ""
+        ToggleButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        ToggleButton.TextSize = 14.000
+        ToggleButton.ZIndex = 2 + zindex
+        ToggleButton.MouseButton1Up:Connect(function()
+            ToggleFiller.Visible = not ToggleFiller.Visible
+            callback(ToggleFiller.Visible)
+        end)
+
+        ToggleFiller.Name = "ToggleFiller"
+        ToggleFiller.Parent = ToggleButton
+        ToggleFiller.BackgroundColor3 = Color3.fromRGB(68, 189, 50)
+        ToggleFiller.BorderColor3 = Color3.fromRGB(47, 54, 64)
+        ToggleFiller.Position = UDim2.new(0, 5, 0, 5)
+        ToggleFiller.Size = UDim2.new(0, 12, 0, 12)
+        ToggleFiller.Visible = on
+        ToggleFiller.ZIndex = 2 + zindex
+        pastSliders[winCount] = false
+    end
+
+    function functions:Box(text, callback)
+        local callback = callback or function() end
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + 32
+        local TextBox = Instance.new("TextBox")
+        local BoxDescription = Instance.new("TextLabel")
+        TextBox.Parent = Content
+        TextBox.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+        TextBox.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        TextBox.Position = UDim2.new(0, 99, 0, listOffset[winCount])
+        TextBox.Size = UDim2.new(0, 95, 0, 26)
+        TextBox.Font = Enum.Font.SourceSans
+        TextBox.PlaceholderColor3 = Color3.fromRGB(220, 221, 225)
+        TextBox.PlaceholderText = "..."
+        TextBox.Text = ""
+        TextBox.TextColor3 = Color3.fromRGB(245, 246, 250)
+        TextBox.TextSize = 16.000
+        TextBox.TextStrokeColor3 = Color3.fromRGB(245, 246, 250)
+        TextBox.ZIndex = 2 + zindex
+        TextBox:GetPropertyChangedSignal('Text'):Connect(function()
+            callback(TextBox.Text, false)
+        end)
+        TextBox.FocusLost:Connect(function()
+            callback(TextBox.Text, true)
+        end)
+
+        BoxDescription.Name = "BoxDescription"
+        BoxDescription.Parent = TextBox
+        BoxDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        BoxDescription.BackgroundTransparency = 1.000
+        BoxDescription.Position = UDim2.new(-0.894736826, 0, 0, 0)
+        BoxDescription.Size = UDim2.new(0, 75, 0, 26)
+        BoxDescription.Font = Enum.Font.SourceSans
+        BoxDescription.Text = text or "Box"
+        BoxDescription.TextColor3 = Color3.fromRGB(245, 246, 250)
+        BoxDescription.TextSize = 16.000
+        BoxDescription.TextXAlignment = Enum.TextXAlignment.Left
+        BoxDescription.ZIndex = 2 + zindex
+        pastSliders[winCount] = false
+    end
+
+    function functions:Slider(text, min, max, default, callback)
+        local text = text or "Slider"
+        local min = min or 1
+        local max = max or 100
+        local default = default or max/2
+        local callback = callback or function() end
+        local offset = 70
+        if default > max then
+            default = max
+        elseif default < min then
+            default = min
+        end
+
+        if pastSliders[winCount] then
+            offset = 60
+        end
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + offset
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + offset
+
+        local Slider = Instance.new("Frame")
+        local SliderButton = Instance.new("Frame")
+        local Description = Instance.new("TextLabel")
+        local SilderFiller = Instance.new("Frame")
+        local Current = Instance.new("TextLabel")
+        local Min = Instance.new("TextLabel")
+        local Max = Instance.new("TextLabel")
+
+        local isdragging, minitial, initialLocal
+
+        function SliderMovement(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                isdragging = true;
+                minitial = input.Position.X;
+                initialLocal = SliderButton.Position.X.Offset;
+                local delta1 = SliderButton.AbsolutePosition.X - initialLocal
+                local con;
+                con = stepped:Connect(function()
+                    if isdragging then
+                        local xOffset = mouse.X - delta1 - 3
+                        if xOffset > 175 then
+                            xOffset = 175
+                        elseif xOffset< 0 then
+                            xOffset = 0
+                        end
+                        SliderButton.Position = UDim2.new(0, xOffset , -1.333337, 0);
+                        SilderFiller.Size = UDim2.new(0, xOffset, 0, 6)
+                        local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
+                        Current.Text = tostring(math.round(value))
+                    else
+                        con:Disconnect();
+                    end;
+                end);
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        isdragging = false;
+                    end;
+                end);
+            end;
+        end
+        function SliderEnd(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                local value = Lerp(min, max, SliderButton.Position.X.Offset/(Slider.Size.X.Offset-5))
+                callback(math.round(value))
+            end
+        end
+
+        Slider.Name = "Slider"
+        Slider.Parent = Content
+        Slider.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+        Slider.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        Slider.Position = UDim2.new(0, 13, 0, listOffset[winCount])
+        Slider.Size = UDim2.new(0, 180, 0, 6)
+        Slider.ZIndex = 2 + zindex
+        Slider.InputBegan:Connect(SliderMovement) 
+        Slider.InputEnded:Connect(SliderEnd)      
+
+        SliderButton.Position = UDim2.new(0, (Slider.Size.X.Offset - 5) * ((default - min)/(max-min)), -1.333337, 0)
+        SliderButton.Name = "SliderButton"
+        SliderButton.Parent = Slider
+        SliderButton.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+        SliderButton.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        SliderButton.Size = UDim2.new(0, 6, 0, 22)
+        SliderButton.ZIndex = 3 + zindex
+        SliderButton.InputBegan:Connect(SliderMovement)
+        SliderButton.InputEnded:Connect(SliderEnd)    
+
+        Current.Name = "Current"
+        Current.Parent = SliderButton
+        Current.BackgroundTransparency = 1.000
+        Current.Position = UDim2.new(0, 3, 0, 22   )
+        Current.Size = UDim2.new(0, 0, 0, 18)
+        Current.Font = Enum.Font.SourceSans
+        Current.Text = tostring(default)
+        Current.TextColor3 = Color3.fromRGB(220, 221, 225)
+        Current.TextSize = 14.000  
+        Current.ZIndex = 2 + zindex
+
+        Description.Name = "Description"
+        Description.Parent = Slider
+        Description.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Description.BackgroundTransparency = 1.000
+        Description.Position = UDim2.new(0, -10, 0, -35)
+        Description.Size = UDim2.new(0, 200, 0, 21)
+        Description.Font = Enum.Font.SourceSans
+        Description.Text = text
+        Description.TextColor3 = Color3.fromRGB(245, 246, 250)
+        Description.TextSize = 16.000
+        Description.ZIndex = 2 + zindex
+
+        SilderFiller.Name = "SilderFiller"
+        SilderFiller.Parent = Slider
+        SilderFiller.BackgroundColor3 = Color3.fromRGB(76, 209, 55)
+        SilderFiller.BorderColor3 = Color3.fromRGB(47, 54, 64)
+        SilderFiller.Size = UDim2.new(0, (Slider.Size.X.Offset - 5) * ((default - min)/(max-min)), 0, 6)
+        SilderFiller.ZIndex = 2 + zindex
+        SilderFiller.BorderMode = Enum.BorderMode.Inset
+
+        Min.Name = "Min"
+        Min.Parent = Slider
+        Min.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Min.BackgroundTransparency = 1.000
+        Min.Position = UDim2.new(-0.00555555569, 0, -7.33333397, 0)
+        Min.Size = UDim2.new(0, 77, 0, 50)
+        Min.Font = Enum.Font.SourceSans
+        Min.Text = tostring(min)
+        Min.TextColor3 = Color3.fromRGB(220, 221, 225)
+        Min.TextSize = 14.000
+        Min.TextXAlignment = Enum.TextXAlignment.Left
+        Min.ZIndex = 2 + zindex
+
+        Max.Name = "Max"
+        Max.Parent = Slider
+        Max.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Max.BackgroundTransparency = 1.000
+        Max.Position = UDim2.new(0.577777743, 0, -7.33333397, 0)
+        Max.Size = UDim2.new(0, 77, 0, 50)
+        Max.Font = Enum.Font.SourceSans
+        Max.Text = tostring(max)
+        Max.TextColor3 = Color3.fromRGB(220, 221, 225)
+        Max.TextSize = 14.000
+        Max.TextXAlignment = Enum.TextXAlignment.Right
+        Max.ZIndex = 2 + zindex
+        pastSliders[winCount] = true
+    end
+
+    function functions:Dropdown(text, buttons, callback)
+        local text = text or "Dropdown"
+        local buttons = buttons or {}
+        local callback = callback or function() end
+
+        local Dropdown = Instance.new("TextButton")
+        local DownSign = Instance.new("TextLabel")
+        local DropdownFrame = Instance.new("ScrollingFrame")
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + 32
+
+        Dropdown.Name = "Dropdown"
+        Dropdown.Parent = Content
+        Dropdown.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+        Dropdown.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        Dropdown.Position = UDim2.new(0, 12, 0, listOffset[winCount])
+        Dropdown.Size = UDim2.new(0, 182, 0, 26)
+        Dropdown.Selected = true
+        Dropdown.Font = Enum.Font.SourceSans
+        Dropdown.Text = tostring(text)
+        Dropdown.TextColor3 = Color3.fromRGB(245, 246, 250)
+        Dropdown.TextSize = 16.000
+        Dropdown.TextStrokeTransparency = 123.000
+        Dropdown.TextWrapped = true
+        Dropdown.ZIndex = 3 + zindex
+        Dropdown.MouseButton1Up:Connect(function()
+            for i, v in pairs(dropdowns) do
+                if v ~= DropdownFrame then
+                v.Visible = false
                 end
             end
-
-            UIList.Parent = scroll
-            Main:Destroy()
-            Main = scroll
-        end
-    end
-
-    --// BUTTON
-    function Frame:Button(text, callback)
-        CheckScroll()
-        local btn = CreateInstance("TextButton", {
-            Parent = Main,
-            Text = text,
-            BackgroundColor3 = Color3.fromRGB(45, 45, 55),
-            BorderSizePixel = 0,
-            TextColor3 = Color3.new(1, 1, 1),
-            Size = UDim2.new(1, -10, 0, 28),
-            Font = Enum.Font.Gotham,
-            TextSize = 14
-        })
-        btn.MouseButton1Click:Connect(function()
-            if callback then callback() end
+            DropdownFrame.Visible = not DropdownFrame.Visible
         end)
-    end
 
-    --// LABEL
-    function Frame:Label(text)
-        CheckScroll()
-        CreateInstance("TextLabel", {
-            Parent = Main,
-            Text = text,
-            BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(200, 200, 200),
-            Font = Enum.Font.Gotham,
-            TextSize = 13,
-            Size = UDim2.new(1, -10, 0, 20)
-        })
-    end
+        DownSign.Name = "DownSign"
+        DownSign.Parent = Dropdown
+        DownSign.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        DownSign.BackgroundTransparency = 1.000
+        DownSign.Position = UDim2.new(0, 155, 0, 2)
+        DownSign.Size = UDim2.new(0, 27, 0, 22)
+        DownSign.Font = Enum.Font.SourceSans
+        DownSign.Text = "^"
+        DownSign.TextColor3 = Color3.fromRGB(220, 221, 225)
+        DownSign.TextSize = 20.000
+        DownSign.ZIndex = 4 + zindex
+        DownSign.TextYAlignment = Enum.TextYAlignment.Bottom
 
-    --// TOGGLE
-    function Frame:Toggle(text, callback)
-        CheckScroll()
-        local toggle = false
-        local btn = CreateInstance("TextButton", {
-            Parent = Main,
-            Text = text .. " [OFF]",
-            BackgroundColor3 = Color3.fromRGB(45, 45, 55),
-            BorderSizePixel = 0,
-            TextColor3 = Color3.new(1, 1, 1),
-            Size = UDim2.new(1, -10, 0, 28),
-            Font = Enum.Font.Gotham,
-            TextSize = 14
-        })
-        btn.MouseButton1Click:Connect(function()
-            toggle = not toggle
-            btn.Text = text .. (toggle and " [ON]" or " [OFF]")
-            if callback then callback(toggle) end
-        end)
-    end
-
-    --// DROPDOWN
-    function Frame:Dropdown(title, list, callback)
-        CheckScroll()
-        local open = false
-        local holder = CreateInstance("Frame", {
-            Parent = Main,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, -10, 0, 30)
-        })
-        local mainBtn = CreateInstance("TextButton", {
-            Parent = holder,
-            Text = title,
-            BackgroundColor3 = Color3.fromRGB(45, 45, 55),
-            BorderSizePixel = 0,
-            TextColor3 = Color3.new(1, 1, 1),
-            Size = UDim2.new(1, 0, 1, 0),
-            Font = Enum.Font.Gotham,
-            TextSize = 14
-        })
-
-        local dropFrame = CreateInstance("Frame", {
-            Parent = holder,
-            BackgroundColor3 = Color3.fromRGB(30, 30, 40),
-            Size = UDim2.new(1, 0, 0, 0),
-            Position = UDim2.new(0, 0, 1, 0),
-            BorderSizePixel = 0,
-            ClipsDescendants = true
-        })
-
-        local layout = Instance.new("UIListLayout", dropFrame)
-
-        for _, item in ipairs(list) do
-            local opt = CreateInstance("TextButton", {
-                Parent = dropFrame,
-                Text = item,
-                BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-                BorderSizePixel = 0,
-                TextColor3 = Color3.new(1, 1, 1),
-                Size = UDim2.new(1, 0, 0, 25),
-                Font = Enum.Font.Gotham,
-                TextSize = 13
-            })
-            opt.MouseButton1Click:Connect(function()
-                mainBtn.Text = title .. ": " .. item
-                if callback then callback(item) end
-                open = false
-                TweenService:Create(dropFrame, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 0)}):Play()
+        DropdownFrame.Name = "DropdownFrame"
+        DropdownFrame.Parent = Dropdown
+        DropdownFrame.Active = true
+        DropdownFrame.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+        DropdownFrame.BorderColor3 = Color3.fromRGB(53, 59, 72)
+        DropdownFrame.Position = UDim2.new(0, 0, 0, 28)
+        DropdownFrame.Size = UDim2.new(0, 182, 0, 0)
+        DropdownFrame.Visible = false
+        DropdownFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        DropdownFrame.ScrollBarThickness = 4
+        DropdownFrame.VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Left
+        DropdownFrame.ZIndex = 5 + zindex
+        DropdownFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+        DropdownFrame.ScrollBarImageColor3 = Color3.fromRGB(220, 221, 225)
+        table.insert(dropdowns, DropdownFrame)
+        local dropFunctions = {}
+        local canvasSize = 0
+        function dropFunctions:Button(name)
+            local name = name or ""
+            local Button_2 = Instance.new("TextButton")
+            Button_2.Name = "Button"
+            Button_2.Parent = DropdownFrame
+            Button_2.BackgroundColor3 = Color3.fromRGB(53, 59, 72)
+            Button_2.BorderColor3 = Color3.fromRGB(113, 128, 147)
+            Button_2.Position = UDim2.new(0, 6, 0, canvasSize + 1)
+            Button_2.Size = UDim2.new(0, 170, 0, 26)
+            Button_2.Selected = true
+            Button_2.Font = Enum.Font.SourceSans
+            Button_2.TextColor3 = Color3.fromRGB(245, 246, 250)
+            Button_2.TextSize = 16.000
+            Button_2.TextStrokeTransparency = 123.000
+            Button_2.ZIndex = 6 + zindex
+            Button_2.Text = name
+            Button_2.TextWrapped = true
+            canvasSize = canvasSize + 27
+            DropdownFrame.CanvasSize = UDim2.new(0, 182, 0, canvasSize + 1)
+            if #DropdownFrame:GetChildren() < 8 then
+                DropdownFrame.Size = UDim2.new(0, 182, 0, DropdownFrame.Size.Y.Offset + 27)
+            end
+            Button_2.MouseButton1Up:Connect(function()
+                callback(name)
+		DropdownFrame.Visible = false
             end)
         end
+        function dropFunctions:Remove(name)
+            local foundIt
+            for i, v in pairs(DropdownFrame:GetChildren()) do
+                if foundIt then
+                    canvasSize = canvasSize - 27
+                    v.Position = UDim2.new(0, 6, 0, v.Position.Y.Offset - 27)
+                    DropdownFrame.CanvasSize = UDim2.new(0, 182, 0, canvasSize + 1)
+                end
+                if v.Text == name then
+                    foundIt = true
+                    v:Destroy()
+                    if #DropdownFrame:GetChildren() < 8 then
+                        DropdownFrame.Size = UDim2.new(0, 182, 0, DropdownFrame.Size.Y.Offset - 27)
+                    end
+                end
+            end
+            if not foundIt then
+                warn("The button you tried to remove didn't exist!")
+            end
+        end
 
-        mainBtn.MouseButton1Click:Connect(function()
-            open = not open
-            TweenService:Create(dropFrame, TweenInfo.new(0.2), {
-                Size = open and UDim2.new(1, 0, 0, #list * 25) or UDim2.new(1, 0, 0, 0)
-            }):Play()
+        for i,v in pairs(buttons) do
+            dropFunctions:Button(v)
+        end
+
+        return dropFunctions
+    end
+
+    function functions:ColorPicker(name, default, callback)
+        local callback = callback or function() end
+
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 32
+
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
+
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        local ColorPicker = Instance.new("TextButton")
+        local PickerCorner = Instance.new("UICorner")
+        local PickerDescription = Instance.new("TextLabel")
+        local ColorPickerFrame = Instance.new("Frame")
+        local ToggleRGB = Instance.new("TextButton")
+        local ToggleFiller_2 = Instance.new("Frame")
+        local TextLabel = Instance.new("TextLabel")
+        local ClosePicker = Instance.new("TextButton")
+        local Canvas = Instance.new("Frame")
+        local CanvasGradient = Instance.new("UIGradient")
+        local Cursor = Instance.new("ImageLabel")
+        local Color = Instance.new("Frame")
+        local ColorGradient = Instance.new("UIGradient")
+        local ColorSlider = Instance.new("Frame")
+        local Title = Instance.new("TextLabel")
+        local UICorner = Instance.new("UICorner")
+        local ColorCorner = Instance.new("UICorner")
+        local BlackOverlay = Instance.new("ImageLabel")
+
+        ColorPicker.Name = "ColorPicker"
+        ColorPicker.Parent = Content
+        ColorPicker.Position = UDim2.new(0, 137, 0, listOffset[winCount])
+        ColorPicker.Size = UDim2.new(0, 57, 0, 26)
+        ColorPicker.Font = Enum.Font.SourceSans
+        ColorPicker.Text = ""
+        ColorPicker.TextColor3 = Color3.fromRGB(0, 0, 0)
+        ColorPicker.TextSize = 14.000
+        ColorPicker.ZIndex = 2 + zindex
+        ColorPicker.MouseButton1Up:Connect(function()
+            for i, v in pairs(colorPickers) do
+                v.Visible = false
+            end
+            ColorPickerFrame.Visible = not ColorPickerFrame.Visible
         end)
-    end
 
-    --// IMAGE
-    function Frame:Image(url)
-        CheckScroll()
-        local img = CreateInstance("ImageLabel", {
-            Parent = Main,
-            BackgroundTransparency = 1,
-            Image = url or "rbxassetid://0",
-            Size = UDim2.new(1, -10, 0, 100),
-            ScaleType = Enum.ScaleType.Fit
+        PickerCorner.Parent = ColorPicker
+        PickerCorner.Name = "PickerCorner"
+        PickerCorner.CornerRadius = UDim.new(0,2)
+
+        PickerDescription.Name = "PickerDescription"
+        PickerDescription.Parent = ColorPicker
+        PickerDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        PickerDescription.BackgroundTransparency = 1.000
+        PickerDescription.Position = UDim2.new(-2.15789509, 0, 0, 0)
+        PickerDescription.Size = UDim2.new(0, 116, 0, 26)
+        PickerDescription.Font = Enum.Font.SourceSans
+        PickerDescription.Text = name or "Color picker"
+        PickerDescription.TextColor3 = Color3.fromRGB(245, 246, 250)
+        PickerDescription.TextSize = 16.000
+        PickerDescription.TextXAlignment = Enum.TextXAlignment.Left
+        PickerDescription.ZIndex = 2 + zindex
+
+        ColorPickerFrame.Name = "ColorPickerFrame"
+        ColorPickerFrame.Parent = ColorPicker
+        ColorPickerFrame.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+        ColorPickerFrame.BorderColor3 = Color3.fromRGB(47, 54, 64)
+        ColorPickerFrame.Position = UDim2.new(1.40350854, 0, -2.84615374, 0)
+        ColorPickerFrame.Size = UDim2.new(0, 158, 0, 155)
+        ColorPickerFrame.ZIndex = 3 + zindex
+        ColorPickerFrame.Visible = false
+
+        ToggleRGB.Name = "ToggleRGB"
+        ToggleRGB.Parent = ColorPickerFrame
+        ToggleRGB.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+        ToggleRGB.BorderColor3 = Color3.fromRGB(113, 128, 147)
+        ToggleRGB.Position = UDim2.new(0, 125, 0, 127)
+        ToggleRGB.Size = UDim2.new(0, 22, 0, 22)
+        ToggleRGB.Font = Enum.Font.SourceSans
+        ToggleRGB.Text = ""
+        ToggleRGB.TextColor3 = Color3.fromRGB(0, 0, 0)
+        ToggleRGB.TextSize = 14.000
+        ToggleRGB.ZIndex = 4 + zindex
+
+        ToggleFiller_2.Name = "ToggleFiller"
+        ToggleFiller_2.Parent = ToggleRGB
+        ToggleFiller_2.BackgroundColor3 = Color3.fromRGB(76, 209, 55)
+        ToggleFiller_2.BorderColor3 = Color3.fromRGB(47, 54, 64)
+        ToggleFiller_2.Position = UDim2.new(0, 5, 0, 5)
+        ToggleFiller_2.Size = UDim2.new(0, 12, 0, 12)
+        ToggleFiller_2.ZIndex = 4 + zindex
+        ToggleFiller_2.Visible = false
+
+        TextLabel.Parent = ToggleRGB
+        TextLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        TextLabel.BackgroundTransparency = 1.000
+        TextLabel.Position = UDim2.new(-5.13636351, 0, 0, 0)
+        TextLabel.Size = UDim2.new(0, 106, 0, 22)
+        TextLabel.Font = Enum.Font.SourceSans
+        TextLabel.Text = "Rainbow"
+        TextLabel.TextColor3 = Color3.fromRGB(245, 246, 250)
+        TextLabel.TextSize = 16.000
+        TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+        TextLabel.ZIndex = 4 + zindex
+
+        ClosePicker.Name = "ClosePicker"
+        ClosePicker.Parent = ColorPickerFrame
+        ClosePicker.BackgroundColor3 = Color3.fromRGB(47, 54, 64)
+        ClosePicker.BorderColor3 = Color3.fromRGB(47, 54, 64)
+        ClosePicker.Position = UDim2.new(0, 132, 0, 5)
+        ClosePicker.Size = UDim2.new(0, 21, 0, 21)
+        ClosePicker.Font = Enum.Font.SourceSans
+        ClosePicker.Text = "X"
+        ClosePicker.TextColor3 = Color3.fromRGB(245, 246, 250)
+        ClosePicker.TextSize = 18.000
+        ClosePicker.ZIndex = 4 + zindex
+        ClosePicker.MouseButton1Down:Connect(function()
+            ColorPickerFrame.Visible = not ColorPickerFrame.Visible
+        end)
+
+        CanvasGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 255, 255))}
+        CanvasGradient.Name = "CanvasGradient"
+        CanvasGradient.Parent = Canvas
+
+        BlackOverlay.Name = "BlackOverlay"
+        BlackOverlay.Parent = Canvas
+        BlackOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        BlackOverlay.BackgroundTransparency = 1.000
+        BlackOverlay.Size = UDim2.new(1, 0, 1, 0)
+        BlackOverlay.Image = "rbxassetid://5107152095"
+        BlackOverlay.ZIndex = 5 + zindex
+
+        UICorner.Parent = Canvas
+        UICorner.Name = "UICorner"
+        UICorner.CornerRadius = UDim.new(0,2)
+
+        Cursor.Name = "Cursor"
+        Cursor.Parent = Canvas
+        Cursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Cursor.BackgroundTransparency = 1.000
+        Cursor.Size = UDim2.new(0, 8, 0, 8)
+        Cursor.Image = "rbxassetid://5100115962"
+        Cursor.ZIndex = 5 + zindex
+
+        local draggingColor = false
+        local hue = 0
+        local sat = 1
+        local brightness = 1
+        
+        local con
+
+        ToggleRGB.MouseButton1Down:Connect(function()
+            ToggleFiller_2.Visible = not ToggleFiller_2.Visible
+            if ToggleFiller_2.Visible then
+                con = stepped:Connect(function()
+                    if ToggleFiller_2.Visible then
+                        local hue2 = tick() % 5 / 5
+                        color3 = Color3.fromHSV(hue2, 1, 1)
+                        callback(color3, true)
+                        ColorPicker.BackgroundColor3 = color3
+                    else
+                        con:Disconnect()
+                    end
+                end)
+            end
+        end)
+        
+        if default and type(default) == "boolean" then
+            ToggleFiller_2.Visible = true
+            if ToggleFiller_2.Visible then
+                con = stepped:Connect(function()
+                    if ToggleFiller_2.Visible then
+                        local hue2 = tick() % 5 / 5
+                        color3 = Color3.fromHSV(hue2, 1, 1)
+                        callback(color3)
+                        ColorPicker.BackgroundColor3 = color3
+                    else
+                        con:Disconnect()
+                    end
+                end)
+            end
+        else
+            ColorPicker.BackgroundColor3 = default or Color3.fromRGB(0, 168, 255)
+        end
+
+        Canvas.Name = "Canvas"
+        Canvas.Parent = ColorPickerFrame
+        Canvas.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Canvas.Position = UDim2.new(0, 5, 0, 34)
+        Canvas.Size = UDim2.new(0, 148, 0, 64)
+        Canvas.ZIndex = 4 + zindex
+        local canvasSize, canvasPosition = Canvas.AbsoluteSize, Canvas.AbsolutePosition
+        Canvas.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                local initial = Vector2.new(Cursor.Position.X.Offset, Cursor.Position.Y.Offset)
+                local delta = Cursor.AbsolutePosition - initial
+                local con;
+                local isdragging = true
+
+                con = stepped:Connect(function()
+                    if isdragging then
+                        local delta2 = Vector2.new(mouse.X, mouse.Y) - delta
+                        local x = math.clamp(delta2.X, 2, Canvas.Size.X.Offset - 2)
+                        local y = math.clamp(delta2.Y, 2, Canvas.Size.Y.Offset - 2)
+                        
+				        sat = 1 - math.clamp((mouse.X - canvasPosition.X) / canvasSize.X, 0, 1)
+				        brightness = 1 - math.clamp((mouse.Y - canvasPosition.Y) / canvasSize.Y, 0, 1)
+				
+                        color3 = Color3.fromHSV(hue, sat, brightness)
+                        
+                        Cursor.Position = UDim2.fromOffset(x - 4, y - 4)
+                        ColorPicker.BackgroundColor3 = color3
+                        callback(color3)
+					else
+						con:Disconnect();
+					end;
+                end);
+                input.Changed:Connect(function()
+    			    if input.UserInputState == Enum.UserInputState.End then
+					    isdragging = false;
+				    end;
+			    end);
+		    end;
+	    end);
+
+        Color.Name = "Color"
+        Color.Parent = ColorPickerFrame
+        Color.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Color.Position = UDim2.new(0, 5, 0, 105)
+        Color.Size = UDim2.new(0, 148, 0, 14)
+        Color.BorderMode = Enum.BorderMode.Inset
+        Color.ZIndex = 4 + zindex
+        Color.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                draggingColor = true
+                local initial2 = ColorSlider.Position.X.Offset;
+                local delta1 = ColorSlider.AbsolutePosition.X - initial2
+                local con
+                con = stepped:Connect(function()
+                if draggingColor then
+                    -- gets the position of the mouse on the color thing and divides it by its size, whcih will give u the hue
+                    local colorPosition, colorSize = Color.AbsolutePosition, Color.AbsoluteSize
+                    hue = 1 - math.clamp(1 - ((mouse.X - colorPosition.X) / colorSize.X), 0, 1)
+                    CanvasGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromHSV(hue, 1, 1)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 255, 255))}
+
+                    local xOffset = math.clamp(mouse.X - delta1, 0, Color.Size.X.Offset - 3)
+                    ColorSlider.Position = UDim2.new(0, xOffset, 0, 0);
+
+                    color3 = Color3.fromHSV(hue, sat, brightness)
+                    ColorPicker.BackgroundColor3  = color3
+                    callback(color3)
+                else
+                    con:Disconnect()
+                end
+            end)
+            end
+        end)
+        Color.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingColor = false
+            end
+        end)
+        ColorGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)), 
+            ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)), 
+            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)), 
+            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)), 
+            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(0, 0, 255)), 
+            ColorSequenceKeypoint.new(0.82, Color3.fromRGB(255, 0, 255)), 
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0))
         })
+        ColorGradient.Name = "ColorGradient"
+        ColorGradient.Parent = Color
+
+        ColorCorner.Parent = Color
+        ColorCorner.Name = "ColorCorner"
+        ColorCorner.CornerRadius = UDim.new(0,2)
+
+        ColorSlider.Name = "ColorSlider"
+        ColorSlider.Parent = Color
+        ColorSlider.BackgroundColor3 = Color3.fromRGB(245, 246, 250)
+        ColorSlider.BorderColor3 = Color3.fromRGB(245, 246, 250)
+        ColorSlider.Size = UDim2.new(0, 2, 0, 14)
+        ColorSlider.ZIndex = 5 + zindex
+
+        Title.Name = "Title"
+        Title.Parent = ColorPickerFrame
+        Title.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Title.BackgroundTransparency = 1.000
+        Title.Position = UDim2.new(0, 10, 0, 5)
+        Title.Size = UDim2.new(0, 118, 0, 21)
+        Title.Font = Enum.Font.SourceSans
+        Title.Text = name or "Color picker"
+        Title.TextColor3 = Color3.fromRGB(245, 246, 250)
+        Title.TextSize = 16.000
+        Title.TextXAlignment = Enum.TextXAlignment.Left
+        Title.ZIndex = 4 + zindex
+
+	    table.insert(colorPickers, ColorPickerFrame)
+
+	    local colorFuncs = {}
+        function colorFuncs:UpdateColorPicker(color)
+        if type(color) == "userdata" then
+            ToggleFiller_2.Visible = false
+	        ColorPicker.BackgroundColor3 = color
+        elseif color and type(color) == "boolean" and not con then
+	        ToggleFiller_2.Visible = true
+                con = stepped:Connect(function()
+                    if ToggleFiller_2.Visible then
+                        local hue2 = tick() % 5 / 5
+                        color3 = Color3.fromHSV(hue2, 1, 1)
+                        callback(color3)
+                        ColorPicker.BackgroundColor3 = color3
+                    else
+                        con:Disconnect()
+                    end
+                end)
+	        end
+	    end
+	return colorFuncs
     end
 
-    -- Close & Minimize
-    CloseBtn.MouseButton1Click:Connect(function()
-        ScreenGui:Destroy()
-    end)
+    -- NEW: Image support function
+    function functions:Image(url)
+        -- Accept either rbxassetid:// or raw https link
+        url = url or ""
+        Elements = Elements + 1
+        sizes[winCount] = sizes[winCount] + 105
 
-    local minimized = false
-    MinimizeBtn.MouseButton1Click:Connect(function()
-        minimized = not minimized
-        TweenService:Create(Frame, TweenInfo.new(0.3), {
-            Size = minimized and UDim2.new(0, size.X.Offset, 0, 30) or size
-        }):Play()
-    end)
+        if Elements == MaxElementsBeforeScroll + 1 then
+            UiWindow.Size = UDim2.new(0, 207, 0, 28 + 200)
+            Content.Size = UDim2.new(0, 207, 0, 200)
+            ConvertToScrolling()
+        end
 
-    table.insert(self.Windows, {Frame = Frame, GUI = ScreenGui})
-    return Frame
+        if not Content:IsA("ScrollingFrame") then
+            UiWindow.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10)
+            Content.Size = UDim2.new(0, 207, 0, sizes[winCount] + 10 - 28)
+        end
+
+        listOffset[winCount] = listOffset[winCount] + 105
+        local ImageLabel = Instance.new("ImageLabel")
+        ImageLabel.Name = "Image"
+        ImageLabel.Parent = Content
+        ImageLabel.BackgroundTransparency = 1
+        ImageLabel.Position = UDim2.new(0, 4, 0, listOffset[winCount])
+        ImageLabel.Size = UDim2.new(0, 198, 0, 100)
+        ImageLabel.ZIndex = 2 + zindex
+        ImageLabel.Image = url
+        ImageLabel.ScaleType = Enum.ScaleType.Fit
+    end
+
+    return functions
 end
 
-return MoonLib
+return library
